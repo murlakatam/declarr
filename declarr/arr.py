@@ -778,6 +778,76 @@ class ArrSyncEngine:
             # else:
             #     raise Exception(f"Cant create more instances of the {path} resource")
 
+    def upsert_custom_formats(self, cfg):
+        """customFormatSet: {name: {specifications: [{name, implementation, negate,
+        required, fields: {value: regex}}], ...}}. Creates/updates only the named
+        formats (needs no profilarr db) and never deletes others."""
+        if not cfg:
+            return
+        existing = to_dict(self.get("/customformat"), "name")
+        for name, body in cfg.items():
+            cur = existing.get(name)
+            cur_specs = to_dict(cur["specifications"], "name") if cur else {}
+            specs = []
+            for s in body.get("specifications", []):
+                live = cur_specs.get(s["name"], {})
+                want = s.get("fields", {})
+                if isinstance(want, dict):
+                    live_fields = live.get("fields") or [
+                        {"name": k} for k in want
+                    ]
+                    fields = [
+                        {**f, "value": want[f["name"]]}
+                        if f["name"] in want
+                        else f
+                        for f in live_fields
+                    ]
+                else:
+                    fields = want
+                specs.append({**live, **s, "fields": fields})
+            new = {"name": name, **body, "specifications": specs}
+            if cur:
+                self.put(f"/customformat/{cur['id']}", {**cur, **new})
+            else:
+                self.post("/customformat", new)
+
+    def patch_quality_profiles(self, cfg):
+        """qualityProfilePatch: {profileName: {formatScores: {formatName: score},
+        <any other profile field, e.g. minFormatScore>}}. The profile must exist;
+        only the listed fields/scores change, nothing is deleted."""
+        if not cfg:
+            return
+        profiles = to_dict(self.get("/qualityprofile"), "name")
+        formats = to_dict(self.get("/customformat"), "name")
+        for name, patch in cfg.items():
+            if name not in profiles:
+                raise Exception(f"qualityProfilePatch: no profile named {name!r}")
+            cur = profiles[name]
+            patch = dict(patch)
+            scores = patch.pop("formatScores", {})
+            body = {**cur, **patch}
+            if scores:
+                items = [
+                    {**i, "score": scores.get(i["name"], i["score"])}
+                    for i in cur.get("formatItems", [])
+                ]
+                have = {i["name"] for i in items}
+                for fname, score in scores.items():
+                    if fname in have:
+                        continue
+                    if fname in formats:
+                        items.append(
+                            {"format": formats[fname]["id"], "name": fname, "score": score}
+                        )
+                    elif self.dry_run:
+                        self.changes.append(
+                            f"UPDATE /qualityprofile {name!r}: + formatItems[{fname!r}] = {score} (format would be created)"
+                        )
+                    else:
+                        raise Exception(f"qualityProfilePatch: no custom format {fname!r}")
+                body["formatItems"] = items
+            self.put(f"/qualityprofile/{cur['id']}", body)
+
     def sync(self):
         log.debug(
             f"{self.cfg['declarr']['name']} cfg: {json.dumps(self.cfg, indent=2)}"
@@ -798,6 +868,9 @@ class ArrSyncEngine:
             #
             "customFormat": None,
             "qualityProfile": None,
+            # non-destructive alternatives to the profilarr-compiled keys above
+            "customFormatSet": None,
+            "qualityProfilePatch": None,
             #
             "rootFolder": None,
             #
@@ -910,6 +983,9 @@ class ArrSyncEngine:
                 },
                 allow_error=True,
             )
+
+            self.upsert_custom_formats(self.cfg["customFormatSet"])
+            self.patch_quality_profiles(self.cfg["qualityProfilePatch"])
 
         if self.type in ("sonarr", "radarr") and self.cfg["rootFolder"] is not None:
             cfg = {v: {"path": v} for v in self.cfg.get("rootFolder", [])}

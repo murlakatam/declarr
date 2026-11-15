@@ -274,6 +274,29 @@ prowlarr:
   #     enableRss: true
   #     minimumSeeders: 1
 
+
+#### Non-destructive custom formats / profile tweaks (sonarr, radarr)
+
+`customFormat`/`qualityProfile` go through the profilarr db and delete everything
+undeclared. For the common "add one format and score it in an existing profile"
+case use these instead (no profilarr db, nothing is deleted):
+
+```yaml
+radarr:
+  customFormatSet:
+    HEVC:
+      includeCustomFormatWhenRenaming: false
+      specifications:
+        - name: x265/HEVC
+          implementation: ReleaseTitleSpecification
+          negate: false
+          required: false
+          fields: {value: '(?i)\b(x265|h[ ._-]?265|hevc)\b'}
+  qualityProfilePatch:
+    "HD - 720p/1080p":      # must exist
+      formatScores: {HEVC: 100}
+      minFormatScore: 0    # any other profile field
+```
 ```
 
 ## Inspiration / similar projects
