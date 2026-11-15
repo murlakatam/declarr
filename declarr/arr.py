@@ -277,6 +277,7 @@ class ArrSyncEngine:
         self.deferred_deletes = []
 
         self.dry_run = dry_run
+        self.wanted_tags = None
         self.force_save = bool(meta_cfg.get("forceSave", False))
         self.changes = []
         self.notes = []
@@ -572,16 +573,53 @@ class ArrSyncEngine:
             )
 
         tags = [tag.lower() for tag in unique(tags)]
+        # only when the top-level tags list is declared, extra tags may be deleted
+        self.wanted_tags = (
+            set(tags) if ("tag" in self.cfg or "tags" in self.cfg) else None
+        )
 
         existing = [v["label"] for v in self.get("/tag")]
         for tag in tags:
             if tag not in existing:
                 self.post("/tag", {"label": tag})
 
-            # TODO: delete unused tags
+            # unused tags are removed at the end of sync() (see delete_unused_tags)
 
         self.tag_map = {v["label"]: v["id"] for v in self.get("/tag")}
         self.tag_map.update(self.fake_tags)  # dry run only
+
+    def delete_unused_tags(self, failed):
+        """Delete tags not declared AND not used by any resource that survives this sync."""
+        if self.wanted_tags is None:
+            return
+
+        scheduled = {
+            (p.strip("/").split("/")[0].lower() + "ids", int(p.strip("/").split("/")[1]))
+            for p, _ in self.deferred_deletes
+            if p.count("/") == 2 and p.strip("/").split("/")[1].isdigit()
+        }
+        usage = {
+            t["id"]: [
+                (k.lower(), i)
+                for k, v in t.items()
+                if k.endswith("Ids") and isinstance(v, list)
+                for i in v
+            ]
+            for t in self.get("/tag/detail")
+        }
+        for t in self.get("/tag"):
+            if t["label"] in self.wanted_tags:
+                continue
+            # users that are about to be deleted (dry run) don't count
+            still_used = [u for u in usage.get(t["id"], []) if u not in scheduled]
+            if still_used:
+                log.warning(f"tag {t['label']!r} not declared but still used, kept")
+                continue
+            try:
+                self.delete(f"/tag/{t['id']}")
+            except Exception as e:
+                log.error(f"DELETE /tag/{t['id']} FAILED: {e}")
+                failed.append(f"/tag/{t['id']}")
 
     def sync_resources(
         self,
@@ -949,6 +987,8 @@ class ArrSyncEngine:
             except Exception as e:
                 log.error(f"DELETE {path} FAILED: {e}")
                 failed.append(path)
+
+        self.delete_unused_tags(failed)
 
         if failed:
             raise Exception(f"{len(failed)} deletes failed: {failed}")
