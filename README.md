@@ -275,6 +275,7 @@ prowlarr:
   #     minimumSeeders: 1
 
 
+```
 #### Non-destructive custom formats / profile tweaks (sonarr, radarr)
 
 `customFormat`/`qualityProfile` go through the profilarr db and delete everything
@@ -296,7 +297,6 @@ radarr:
     "HD - 720p/1080p":      # must exist
       formatScores: {HEVC: 100}
       minFormatScore: 0    # any other profile field
-```
 ```
 
 ## Inspiration / similar projects
