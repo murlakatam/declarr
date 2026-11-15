@@ -180,6 +180,8 @@ class FormatCompiler:
 
 SECRET_HINTS = ("password", "apikey", "token", "secret", "cookie", "passkey", "username")
 MASK = "********"
+# *arr API: save without testing the connection (a remote outage must not block config sync)
+FORCE_QS = "?forceSave=true"
 
 
 def _norm_fields(v):
@@ -275,6 +277,7 @@ class ArrSyncEngine:
         self.deferred_deletes = []
 
         self.dry_run = dry_run
+        self.force_save = bool(meta_cfg.get("forceSave", False))
         self.changes = []
         self.notes = []
         self.fake_tags = {}
@@ -305,14 +308,14 @@ class ArrSyncEngine:
     def get(self, path: str, body=None):
         return self._base_req("get ", self.r.get, path, body)
 
-    def post(self, path: str, body=None):
+    def post(self, path: str, body=None, force=False):
         if self.dry_run:
             name = (body or {}).get("name") or (body or {}).get("label") or (body or {}).get("path")
             self.changes.append(f"CREATE {path} {name!r}")
             if path == "/tag":
                 self.fake_tags[(body or {})["label"]] = -1 - len(self.fake_tags)
             return {"id": -1}
-        return self._base_req("post", self.r.post, path, body)
+        return self._base_req("post", self.r.post, path + FORCE_QS * force, body)
 
     def delete(self, path: str, body=None):
         if self.dry_run:
@@ -328,7 +331,7 @@ class ArrSyncEngine:
     def deferr_delete(self, path: str, body=None):
         self.deferred_deletes.append([path, body])
 
-    def put(self, path: str, body=None):
+    def put(self, path: str, body=None, force=False):
         if self.dry_run:
             cur = self.get(path)
             diff = diff_resource(cur, body or {})
@@ -342,7 +345,7 @@ class ArrSyncEngine:
                 self.changes.append(f"UPDATE {path} {name!r}:")
                 self.changes.extend(f"    {d}" for d in diff)
             return body
-        return self._base_req("put ", self.r.put, path, body)
+        return self._base_req("put ", self.r.put, path + FORCE_QS * force, body)
 
     # def parse_schema(self, path: str):
     #     schemas = to_dict(self.get(path + "/schema"), "implementationName")
@@ -729,10 +732,10 @@ class ArrSyncEngine:
 
         for name, data in cfg.items():
             if name in existing.keys():
-                self.put(f"{path}/{existing[name]['id']}", data)
+                self.put(f"{path}/{existing[name]['id']}", data, force=self.force_save)
             # elif not only_update:
             else:
-                self.post(path, data)
+                self.post(path, data, force=self.force_save)
             # else:
             #     raise Exception(f"Cant create more instances of the {path} resource")
 
