@@ -219,6 +219,8 @@ def diff_resource(cur: dict, new: dict, prefix=""):
     out = []
     for k, nv in new.items():
         if k not in cur:
+            if not prefix:
+                continue  # not stored by the API (enable, indexerName ...): PUT ignores it
             if nv not in (None, [], {}, "", False, 0):
                 out.append(f"+ {prefix}{k} = {_show(k, nv)}")
             continue
