@@ -49,6 +49,13 @@ def parse_args():
     # )
 
     parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Dry run: show what --sync would create/update/delete, change nothing. "
+        "Exit code 0 = no changes, 2 = changes.",
+    )
+
+    parser.add_argument(
         "--sync",
         action="store_true",
         help="Sync config",
@@ -185,6 +192,7 @@ def main():
     format_compiler = None
 
     should_run = args.run is not None
+    diff_total = 0
     for key, cfg in cfgs.items():
         if key == "declarr":
             continue
@@ -205,8 +213,14 @@ def main():
             ):
                 format_compiler = FormatCompiler(cfgs)
 
-            if args.sync:
-                ArrSyncEngine(cfg, format_compiler).sync()
+            if args.sync or args.diff:
+                engine = ArrSyncEngine(cfg, format_compiler, dry_run=args.diff)
+                engine.sync()
+                if args.diff:
+                    print(f"== {key}: " + ("no changes" if not engine.changes else f"{len(engine.changes)} change line(s)"))
+                    for c in engine.changes:
+                        print("  " + c)
+                    diff_total += len(engine.changes)
 
         elif cfg["declarr"]["type"] == "jellyfin":
             if args.sync:
@@ -222,6 +236,9 @@ def main():
         if should_run:
             log.critical(f"Cant run {cfg['declarr']['type']}")
             exit(1)
+
+    if args.diff:
+        exit(2 if diff_total else 0)
 
     log.info("Finished to apply configurations")
 
