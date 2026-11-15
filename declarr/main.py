@@ -220,6 +220,8 @@ def main():
                     print(f"== {key}: " + ("no changes" if not engine.changes else f"{len(engine.changes)} change line(s)"))
                     for c in engine.changes:
                         print("  " + c)
+                    for n in engine.notes:
+                        print("  note: " + n)
                     diff_total += len(engine.changes)
 
         elif cfg["declarr"]["type"] == "jellyfin":

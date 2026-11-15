@@ -232,7 +232,7 @@ def diff_resource(cur: dict, new: dict, prefix=""):
             continue
         if cv == MASK:
             # can't verify a censored secret, a real value would be pushed
-            out.append(f"~ {prefix}{k}: censored in arr, would be set from config")
+            out.append(f"? {prefix}{k}: censored in arr, unverifiable (would be set from config)")
             continue
         out.append(f"~ {prefix}{k}: {_show(k, cv)} -> {_show(k, nv)}")
     return out
@@ -274,6 +274,7 @@ class ArrSyncEngine:
 
         self.dry_run = dry_run
         self.changes = []
+        self.notes = []
         self.fake_tags = {}
 
     def _base_req(self, name, f, path: str, body):
@@ -329,6 +330,11 @@ class ArrSyncEngine:
         if self.dry_run:
             cur = self.get(path)
             diff = diff_resource(cur, body or {})
+            if diff:
+                name = cur.get("name") or path
+                real = [d for d in diff if not d.startswith("?")]
+                self.notes.extend(f"{path} {name!r}: {d}" for d in diff if d.startswith("?"))
+                diff = real
             if diff:
                 name = cur.get("name") or path
                 self.changes.append(f"UPDATE {path} {name!r}:")
