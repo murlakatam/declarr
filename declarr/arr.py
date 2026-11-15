@@ -458,7 +458,7 @@ class ArrSyncEngine:
         return cfg
 
     def sync_tags(self):
-        tags = self.cfg.get("tag", [])
+        tags = list(self.cfg.get("tag") or self.cfg.get("tags") or [])
 
         for k in ["indexer", "indexerProxy", "downloadClient", "applications"]:
             if k not in self.cfg:
@@ -505,7 +505,7 @@ class ArrSyncEngine:
                 cfg,
                 lambda k, v: {
                     **schema,
-                    **existing,
+                    **existing.get(k, {}),
                     "name": k,
                     **v,
                 },
@@ -655,7 +655,7 @@ class ArrSyncEngine:
             "applications": None,
             #
             "indexer": None,
-            "indexerProxie": None,
+            "indexerProxy": None,
             #
             "qualityDefinition": {},
             #
@@ -669,7 +669,10 @@ class ArrSyncEngine:
             **self.cfg,
         }
 
-        if self.type in ("sonarr", "radarr"):
+        if self.type in ("sonarr", "radarr") and (
+            self.cfg["qualityProfile"] is not None
+            or self.cfg["customFormat"] is not None
+        ):
             self.cfg = self.format_compiler.compile_formats(self.cfg)
 
         self.sync_tags()

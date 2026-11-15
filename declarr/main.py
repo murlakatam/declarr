@@ -199,7 +199,10 @@ def main():
         cfg["declarr"]["name"] = key
 
         if cfg["declarr"]["type"] in ("sonarr", "radarr", "lidarr", "prowlarr"):
-            if format_compiler is None:
+            if (
+                format_compiler is None
+                and (cfg.get("qualityProfile") is not None or cfg.get("customFormat") is not None)
+            ):
                 format_compiler = FormatCompiler(cfgs)
 
             if args.sync:
