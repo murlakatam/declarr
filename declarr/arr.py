@@ -216,12 +216,12 @@ def _show(key, v):
     return s if len(s) < 120 else s[:117] + "..."
 
 
-def diff_resource(cur: dict, new: dict, prefix=""):
+def diff_resource(cur: dict, new: dict, prefix="", report_missing=False):
     """Human readable differences cur -> new. Never prints secret values."""
     out = []
     for k, nv in new.items():
         if k not in cur:
-            if not prefix:
+            if not prefix and not report_missing:
                 continue  # not stored by the API (enable, indexerName ...): PUT ignores it
             if nv not in (None, [], {}, "", False, 0):
                 out.append(f"+ {prefix}{k} = {_show(k, nv)}")
@@ -333,10 +333,10 @@ class ArrSyncEngine:
     def deferr_delete(self, path: str, body=None):
         self.deferred_deletes.append([path, body])
 
-    def put(self, path: str, body=None, force=False):
+    def put(self, path: str, body=None, force=False, report_missing=False):
         if self.dry_run:
             cur = self.get(path)
-            diff = diff_resource(cur, body or {})
+            diff = diff_resource(cur, body or {}, report_missing=report_missing)
             if diff:
                 name = cur.get("name") or path
                 real = [d for d in diff if not d.startswith("?")]
@@ -942,6 +942,7 @@ class ArrSyncEngine:
                 self.put(
                     f"/qualityDefinition/{qmap[name]['id']}",
                     deep_merge(x, qmap[name]),
+                    report_missing=True,
                 )
 
             # self.sync_contracts(
