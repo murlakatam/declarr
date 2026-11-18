@@ -7,8 +7,7 @@ from declarr.utils import del_keys
 import time
 import yaml
 from declarr.utils import deep_compare
-from json import JSONDecodeError
-from declarr.utils import deep_merge, to_dict, prettify, pp
+from declarr.utils import deep_merge, to_dict, prettify, pp, redact, redact_text
 import json
 import logging
 
@@ -53,25 +52,22 @@ class JellyfinSyncEngine:
         body = {} if body is None else body
 
         if log.isEnabledFor(logging.DEBUG):
-            log.debug(f"{name} {self.url}{path} {prettify(body)}")
+            log.debug(f"{name} {self.url}{path} {prettify(redact(body))}")
         else:
             log.info(f"{name} {self.url}{path}")
 
         res = f(self.url + path, json=body, params=params)
-        log.debug(f"=> {prettify(res.text)}")
+        log.debug(f"=> {redact_text(res.text)}")
 
         if res.status_code < 300:
             return res.text and res.json()
 
-        res_txt = ""
-        try:
-            res_txt = json.dumps(res.json(), indent=2)  # if res.text else '""'
-        except JSONDecodeError:
-            res_txt = f'"{res.text}"'
+        # Secrets are redacted: this ends up in the journal.
+        res_txt = redact_text(res.text)
 
         raise Exception(
             f"{name} {self.url}{path} "
-            f"{json.dumps(body, indent=2)} "
+            f"{json.dumps(redact(body), indent=2)} "
             f"=> {res_txt}"
             f": {res.status_code}"
         )

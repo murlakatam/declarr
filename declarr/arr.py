@@ -17,6 +17,9 @@ from profilarr.importer.strategies.profile import ProfileStrategy
 import logging
 
 from declarr.utils import (
+    SECRET_HINTS,
+    redact,
+    redact_text,
     add_defaults,
     deep_merge,
     del_keys,
@@ -178,7 +181,6 @@ class FormatCompiler:
         return cfg
 
 
-SECRET_HINTS = ("password", "apikey", "token", "secret", "cookie", "passkey", "username")
 MASK = "********"
 # *arr API: save without testing the connection (a remote outage must not block config sync)
 FORCE_QS = "?forceSave=true"
@@ -287,12 +289,12 @@ class ArrSyncEngine:
         body = {} if body is None else body
 
         if log.isEnabledFor(logging.DEBUG):
-            log.debug(f"{name} {self.url}{path} {prettify(body)}")
+            log.debug(f"{name} {self.url}{path} {prettify(redact(body))}")
         else:
             log.info(f"{name} {self.url}{path}")
 
         res = f(self.url + path, json=body)
-        log.debug(f"=> {prettify(res.text)}")
+        log.debug(f"=> {redact_text(res.text)}")
 
         if res.status_code < 300:
             # DELETE /tag answers 200 with an empty body
@@ -300,10 +302,11 @@ class ArrSyncEngine:
 
         # res.raise_for_status()
 
+        # Secrets (indexer passwords, app API keys) are redacted: this ends up in the journal.
         raise Exception(
             f"{name} {self.url}{path} "
-            f"{json.dumps(body, indent=2)} "
-            f"{json.dumps(res.json(), indent=2) if res.text else '""'}"
+            f"{json.dumps(redact(body), indent=2)} "
+            f"{redact_text(res.text) if res.text else '""'}"
             f": {res.status_code}"
         )
 

@@ -1,6 +1,42 @@
 import json
 from typing import Callable
 
+# Key / field-name fragments whose values must never reach logs or exceptions.
+SECRET_HINTS = ("password", "apikey", "token", "secret", "cookie", "passkey", "username")
+REDACTED = "<redacted>"
+
+
+def _secret(name) -> bool:
+    return isinstance(name, str) and any(h in name.lower().replace("_", "") for h in SECRET_HINTS)
+
+
+def redact(obj):
+    """Deep copy of a request/response body with secret values replaced, for logs and errors.
+
+    Covers plain keys ({"apiKey": ..}), *arr field lists ([{"name": "password", "value": ..}]) and
+    *arr validation errors ({"propertyName": "Password", "attemptedValue": ..}).
+    """
+    if isinstance(obj, list):
+        return [redact(i) for i in obj]
+    if not isinstance(obj, dict):
+        return obj
+    named = _secret(obj.get("name")) or _secret(obj.get("propertyName"))
+    out = {}
+    for k, v in obj.items():
+        if _secret(k) or (named and k in ("value", "attemptedValue")):
+            out[k] = REDACTED if v not in (None, "") else v
+        else:
+            out[k] = redact(v)
+    return out
+
+
+def redact_text(text: str) -> str:
+    """redact() for a raw response body; non-JSON bodies are reduced to their length."""
+    try:
+        return json.dumps(redact(json.loads(text)), indent=2)
+    except (ValueError, TypeError):
+        return f"<{len(text or '')} chars, not JSON>"
+
 
 type AccessOverload = Callable[[dict], bool] | str
 
